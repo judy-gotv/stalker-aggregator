@@ -1,5 +1,12 @@
 # Stalker Aggregator / Stalker 聚合服务
 
+[![Platform](https://img.shields.io/badge/平台-Linux-555555?style=flat-square)](https://github.com/judy-gotv/stalker-aggregator/releases)
+[![x86_64](https://img.shields.io/badge/x86__64-AMD64-087ea4?style=flat-square)](https://github.com/judy-gotv/stalker-aggregator/releases)
+[![aarch64](https://img.shields.io/badge/aarch64-ARM64-087ea4?style=flat-square)](https://github.com/judy-gotv/stalker-aggregator/releases)
+[![armv7](https://img.shields.io/badge/armv7-ARMv7-087ea4?style=flat-square)](https://github.com/judy-gotv/stalker-aggregator/releases)
+![License](https://img.shields.io/badge/许可-MIT-55a630?style=flat-square)
+![Telegram](https://img.shields.io/badge/Telegram-GPT__858-229ED9?style=flat-square&logo=telegram&logoColor=white)
+
 > **v0.0.1** · Linux Binary Release / Linux 二进制发布包
 
 Aggregate authorized Stalker Portal subscriptions into one playlist with web administration, automatic source selection, redirect or media-proxy delivery, IPv4/IPv6, and systemd deployment.  
@@ -12,6 +19,30 @@ Aggregate authorized Stalker Portal subscriptions into one playlist with web adm
 ---
 
 ## Quick Start / 快速开始
+
+### Remote Installer / GitHub 远程安装脚本
+
+#### 快速安装 / Quick Install
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/judy-gotv/stalker-aggregator/main/install.sh)
+```
+
+#### 或下载后执行 / Or Download and Run
+
+```text
+https://raw.githubusercontent.com/judy-gotv/stalker-aggregator/main/install.sh
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/judy-gotv/stalker-aggregator/main/install.sh -o install.sh
+bash install.sh
+```
+
+The remote script downloads the release installer and then the matching verified binary.  
+远程脚本会下载发布安装器，再下载并校验匹配架构的二进制。
+
+### Local Release Package / 本地发布包
 
 Copy this directory to a Linux server and run:  
 将此目录复制到 Linux 服务器后执行：
