@@ -77,15 +77,51 @@ set_admin_credentials() {
 }
 
 update_running_port() {
-  local env_file=/etc/stalker-aggregator.env
+  local env_file=/etc/stalker-aggregator.env current_port value
   if [ "$(id -u)" -ne 0 ]; then printf '%b\n' "${RED}请以 root 运行 / Run as root.${RESET}"; return; fi
   if [ ! -f "$env_file" ] || ! systemctl cat "$SERVICE_NAME" >/dev/null 2>&1; then
     printf '%b\n' "${RED}未找到已安装服务 / Installed service not found.${RESET}"; return
   fi
+  current_port=$(sed -n 's/^STALKER_BIND=0.0.0.0:\([0-9][0-9]*\)$/\1/p' "$env_file" | head -n 1)
+  current_port=${current_port:-$PORT}
+  read -r -p "新服务端口 / New port [$current_port]: " value
+  value=${value:-$current_port}
+  if ! valid_port "$value"; then
+    printf '%b\n' "${RED}端口无效 / Invalid port.${RESET}"; return
+  fi
+  PORT=$value
   sed -i -e "s|^STALKER_BIND=.*|STALKER_BIND=0.0.0.0:$PORT|" -e "s|^STALKER_BIND_V6=.*|STALKER_BIND_V6=[::]:$PORT|" "$env_file"
   grep -q '^STALKER_BIND_V6=' "$env_file" || printf 'STALKER_BIND_V6=[::]:%s\n' "$PORT" >> "$env_file"
   systemctl restart "$SERVICE_NAME"
   printf '%b\n' "${GREEN}端口已更新并生效 / Port updated and service restarted: $PORT${RESET}"
+}
+
+prompt_install_options() {
+  local value
+  read -r -p "服务端口 / Service port [$PORT]: " value
+  value=${value:-$PORT}
+  if ! valid_port "$value"; then
+    printf '%b\n' "${RED}端口无效 / Invalid port.${RESET}"
+    return 1
+  fi
+  PORT=$value
+
+  read -r -p "安装路径 / Install path [$INSTALL_DIR]: " value
+  value=${value:-$INSTALL_DIR}
+  case "$value" in
+    /*) INSTALL_DIR=${value%/} ;;
+    *) printf '%b\n' "${RED}请使用绝对路径 / Use an absolute path.${RESET}"; return 1 ;;
+  esac
+
+  read -r -p "代理媒体流量？/ Proxy media traffic? [y/N]: " value
+  case "${value:-n}" in
+    y|Y|yes|YES) PROXY_MEDIA=true ;;
+    n|N|no|NO) PROXY_MEDIA=false ;;
+    *) printf '%b\n' "${RED}请输入 y 或 n / Please enter y or n.${RESET}"; return 1 ;;
+  esac
+
+  set_admin_credentials
+  [ -n "$ADMIN_USERNAME" ] || return 1
 }
 
 upgrade_running_service() {
@@ -138,35 +174,20 @@ show_menu() {
   printf '  服务端口 / Port          : %s\n' "$PORT"
   printf '  安装路径 / Install path  : %s\n' "$INSTALL_DIR"
   printf '  媒体代理 / Media proxy   : %s\n\n' "$PROXY_MEDIA"
-  printf '%b\n' "  ${GREEN}1${RESET}) 设置端口 / Set port"
-  printf '%b\n' "  ${GREEN}2${RESET}) 设置安装路径 / Set installation path"
-  printf '%b\n' "  ${GREEN}3${RESET}) 切换媒体代理 / Toggle media proxy"
-  printf '%b\n' "  ${GREEN}4${RESET}) 设置管理账户和密码 / Set admin account and password"
-  printf '%b\n' "  ${GREEN}5${RESET}) 开始安装或更新 / Install or update"
-  printf '%b\n' "  ${GREEN}6${RESET}) 在线更改端口 / Update running service port"
-  printf '%b\n' "  ${GREEN}7${RESET}) 在线升级服务 / Upgrade running service"
+  printf '%b\n' "  ${GREEN}1${RESET}) 在线安装 / Online install"
+  printf '%b\n' "  ${GREEN}2${RESET}) 在线更改端口 / Update running service port"
+  printf '%b\n' "  ${GREEN}3${RESET}) 在线升级服务 / Upgrade running service"
   printf '%b\n' "  ${GREEN}0${RESET}) 退出 / Exit"
 }
 
 configure_interactively() {
   while true; do
     show_menu
-    read -r -p '请选择 / Select [0-7]: ' choice
+    read -r -p '请选择 / Select [0-3]: ' choice
     case "$choice" in
-      1)
-        read -r -p "服务端口 / Port [$PORT]: " value
-        value=${value:-$PORT}
-        if valid_port "$value"; then PORT=$value; else printf '%b\n' "${RED}端口无效 / Invalid port.${RESET}"; sleep 1; fi ;;
-      2)
-        read -r -p "安装路径 / Install path [$INSTALL_DIR]: " value
-        value=${value:-$INSTALL_DIR}
-        case "$value" in /*) INSTALL_DIR=${value%/};; *) printf '%b\n' "${RED}请使用绝对路径 / Use an absolute path.${RESET}"; sleep 1;; esac ;;
-      3)
-        if [ "$PROXY_MEDIA" = true ]; then PROXY_MEDIA=false; else PROXY_MEDIA=true; fi ;;
-      4) set_admin_credentials ;;
-      5) break ;;
-      6) update_running_port; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
-      7) upgrade_running_service; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
+      1) prompt_install_options && break; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
+      2) update_running_port; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
+      3) upgrade_running_service; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
       0) exit 0 ;;
       *) printf '%b\n' "${RED}选项无效 / Invalid selection.${RESET}"; sleep 1 ;;
     esac

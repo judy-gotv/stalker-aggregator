@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/许可-MIT-55a630?style=flat-square)
 ![Telegram](https://img.shields.io/badge/Telegram-GPT__858-229ED9?style=flat-square&logo=telegram&logoColor=white)
 
-> **v0.0.1** · Linux Binary Release / Linux 二进制发布包
+> **v0.0.2** · Linux Binary Release / Linux 二进制发布包
 
 Aggregate authorized Stalker Portal subscriptions into one playlist with web administration, automatic source selection, redirect or media-proxy delivery, IPv4/IPv6, and systemd deployment.  
 将合法持有的 Stalker Portal 订阅聚合为一个播放列表，支持网页后台、自动选源、302 重定向或媒体代理、IPv4/IPv6 和 systemd 部署。
@@ -52,8 +52,8 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-The interactive menu lets you set the port, install directory, media proxy mode, admin account/password, install/update action, and online port change.  
-交互菜单可设置端口、安装路径、媒体代理模式、管理员账号密码、安装/更新，以及在线修改端口。
+Choose `1) Online install / 在线安装` in the interactive menu. The installer then asks for the port, installation directory, media proxy mode, and administrator account/password before it downloads and deploys the service.  
+交互菜单选择 `1) 在线安装 / Online install` 后，安装器会依次询问端口、安装路径、媒体代理模式及管理员账号密码，再下载并部署服务。
 
 On first installation, a strong password is generated if one is not supplied. It is printed once in the final summary.  
 首次安装时若未设置密码，安装器会自动生成强密码，并在最终摘要中显示一次。
@@ -139,11 +139,11 @@ sudo systemctl restart stalker-aggregator
 sudo journalctl -u stalker-aggregator -f
 ```
 
-To change the port without reinstalling, run `sudo ./install.sh` and select `6) 在线更改端口 / Update running service port`. The installer updates the configuration and restarts the service automatically.  
-要在不重新安装的情况下修改端口，运行 `sudo ./install.sh` 并选择 `6) 在线更改端口 / Update running service port`。安装器会更新配置并自动重启服务。
+To change the port without reinstalling, run `sudo ./install.sh` and select `2) 在线更改端口 / Update running service port`. The installer asks for the new port, updates the configuration, and restarts the service automatically.  
+要在不重新安装的情况下修改端口，运行 `sudo ./install.sh` 并选择 `2) 在线更改端口 / Update running service port`。安装器会询问新端口、更新配置并自动重启服务。
 
-To upgrade safely, select `7) 在线升级服务 / Upgrade running service`. It downloads and verifies the latest matching binary, atomically replaces only the executable, and restarts the service. The environment file, SQLite database, subscriptions, and administrator credentials are preserved.  
-要安全升级，请选择 `7) 在线升级服务 / Upgrade running service`。该功能会下载并校验最新匹配架构二进制，只原子替换可执行文件后重启服务；环境文件、SQLite 数据库、订阅和管理员凭据都会保留。
+To upgrade safely, select `3) 在线升级服务 / Upgrade running service`. It downloads and verifies the latest matching binary, atomically replaces only the executable, and restarts the service. The environment file, SQLite database, subscriptions, and administrator credentials are preserved.  
+要安全升级，请选择 `3) 在线升级服务 / Upgrade running service`。该功能会下载并校验最新匹配架构二进制，只原子替换可执行文件后重启服务；环境文件、SQLite 数据库、订阅和管理员凭据都会保留。
 
 ---
 
