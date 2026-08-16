@@ -8,7 +8,7 @@ ADMIN_USERNAME=
 ADMIN_PASSWORD=
 SERVICE_NAME=stalker-aggregator
 RELEASE_REPOSITORY=judy-gotv/stalker-aggregator
-RELEASE_TAG=v0.0.1
+RELEASE_TAG=latest
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 INTERACTIVE=true
 
@@ -30,19 +30,26 @@ EOF
 valid_port() { case "$1" in *[!0-9]*|'') return 1;; esac; [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
 
 download_binary() {
-  local asset="stalker-aggregator-$ARCH" url expected actual
-  if [ "$RELEASE_TAG" != "v0.0.1" ]; then
-    echo "未登记该版本的 SHA-256 / No verified checksum registered for: $RELEASE_TAG" >&2
+  local asset="stalker-aggregator-$ARCH" api_url metadata_url expected actual tag url
+  if [ "$RELEASE_TAG" = latest ]; then
+    api_url="https://api.github.com/repos/$RELEASE_REPOSITORY/releases/latest"
+  else
+    api_url="https://api.github.com/repos/$RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG"
+  fi
+  metadata_url=$(mktemp)
+  if ! curl --fail --location --retry 3 --silent --show-error "$api_url" -o "$metadata_url"; then
+    rm -f "$metadata_url"; return 1
+  fi
+  tag=$(sed -n 's/^[[:space:]]*"tag_name": "\([^"]*\)".*/\1/p' "$metadata_url" | head -n 1)
+  expected=$(sed -n "/\"name\": \"$asset\"/,/\"browser_download_url\"/s/.*\"digest\": \"sha256:\([0-9a-f]*\)\".*/\1/p" "$metadata_url" | head -n 1)
+  rm -f "$metadata_url"
+  if [ -z "$tag" ] || [ -z "$expected" ]; then
+    echo "Release 缺少目标资产或 SHA-256 digest / Release asset or SHA-256 digest is missing" >&2
     return 1
   fi
-  url="https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/$asset"
-  case "$ARCH" in
-    amd64) expected=bc42662b5f5a7d67fa5531d61843f002fd78bc5b708f6fcb69605cb2d1174997 ;;
-    aarch64) expected=9016790cd3483f99c2726d3b0acdddfc65cfe892ebe9935e3696135fbc115b01 ;;
-    armv7) expected=b6e28b1bea07b043ccc5ca514ed79a0227f44bd5153620cf076dbd8fc90a8bb5 ;;
-  esac
+  url="https://github.com/$RELEASE_REPOSITORY/releases/download/$tag/$asset"
   DOWNLOADED_BINARY=$(mktemp)
-  printf '下载版本 %s / Downloading %s for %s...\n' "$RELEASE_TAG" "$asset" "$ARCH"
+  printf '下载版本 %s / Downloading %s for %s...\n' "$tag" "$asset" "$ARCH"
   if ! curl --fail --location --retry 3 --silent --show-error "$url" -o "$DOWNLOADED_BINARY"; then
     rm -f "$DOWNLOADED_BINARY"; DOWNLOADED_BINARY=; return 1
   fi
@@ -81,6 +88,26 @@ update_running_port() {
   printf '%b\n' "${GREEN}端口已更新并生效 / Port updated and service restarted: $PORT${RESET}"
 }
 
+upgrade_running_service() {
+  local current_dir staged_binary
+  if [ "$(id -u)" -ne 0 ]; then printf '%b\n' "${RED}请以 root 运行 / Run as root.${RESET}"; return; fi
+  current_dir=$(systemctl show --property=WorkingDirectory --value "$SERVICE_NAME" 2>/dev/null || true)
+  if [ -z "$current_dir" ] || [ ! -x "$current_dir/stalker-aggregator" ]; then
+    printf '%b\n' "${RED}未找到已安装服务 / Installed service not found.${RESET}"; return
+  fi
+  DOWNLOADED_BINARY=
+  if ! download_binary; then
+    printf '%b\n' "${RED}升级下载或校验失败 / Upgrade download or verification failed.${RESET}"; return
+  fi
+  staged_binary="$current_dir/.stalker-aggregator.new"
+  install -o root -g root -m 0755 "$DOWNLOADED_BINARY" "$staged_binary"
+  mv -f "$staged_binary" "$current_dir/stalker-aggregator"
+  rm -f "$DOWNLOADED_BINARY"
+  systemctl restart "$SERVICE_NAME"
+  printf '%b\n' "${GREEN}升级完成 / Upgrade complete: $RELEASE_TAG${RESET}"
+  printf '%b\n' "${YELLOW}订阅、数据库和配置未被修改 / Subscriptions, database, and configuration were preserved.${RESET}"
+}
+
 print_summary() {
   printf '%b\n' "${CYAN}${BOLD}========================================${RESET}"
   printf '%b\n' "${GREEN}${BOLD}安装完成 / Installation complete${RESET}"
@@ -117,13 +144,14 @@ show_menu() {
   printf '%b\n' "  ${GREEN}4${RESET}) 设置管理账户和密码 / Set admin account and password"
   printf '%b\n' "  ${GREEN}5${RESET}) 开始安装或更新 / Install or update"
   printf '%b\n' "  ${GREEN}6${RESET}) 在线更改端口 / Update running service port"
+  printf '%b\n' "  ${GREEN}7${RESET}) 在线升级服务 / Upgrade running service"
   printf '%b\n' "  ${GREEN}0${RESET}) 退出 / Exit"
 }
 
 configure_interactively() {
   while true; do
     show_menu
-    read -r -p '请选择 / Select [0-6]: ' choice
+    read -r -p '请选择 / Select [0-7]: ' choice
     case "$choice" in
       1)
         read -r -p "服务端口 / Port [$PORT]: " value
@@ -138,6 +166,7 @@ configure_interactively() {
       4) set_admin_credentials ;;
       5) break ;;
       6) update_running_port; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
+      7) upgrade_running_service; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
       0) exit 0 ;;
       *) printf '%b\n' "${RED}选项无效 / Invalid selection.${RESET}"; sleep 1 ;;
     esac

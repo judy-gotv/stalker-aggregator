@@ -87,12 +87,11 @@ sudo ./install.sh \
   --install-dir /opt/stalker-aggregator \
   --proxy-media false \
   --admin-user admin \
-  --admin-password 'replace-with-a-strong-password' \
-  --version v0.0.1
+  --admin-password 'replace-with-a-strong-password'
 ```
 
-`--version` currently accepts only `v0.0.1`, which has registered checksum values.  
-`--version` 当前仅接受已登记校验值的 `v0.0.1`。
+The installer selects the latest GitHub Release by default. Use `--version v0.0.2` to select a specific release. It retrieves the matching asset's SHA-256 digest from the GitHub Release API before downloading.  
+安装器默认选择最新 GitHub Release。使用 `--version v0.0.2` 可指定版本；下载前会从 GitHub Release API 读取对应资产的 SHA-256 digest。
 
 ---
 
@@ -111,6 +110,9 @@ sudo journalctl -u stalker-aggregator -f
 
 To change the port without reinstalling, run `sudo ./install.sh` and select `6) 在线更改端口 / Update running service port`. The installer updates the configuration and restarts the service automatically.  
 要在不重新安装的情况下修改端口，运行 `sudo ./install.sh` 并选择 `6) 在线更改端口 / Update running service port`。安装器会更新配置并自动重启服务。
+
+To upgrade safely, select `7) 在线升级服务 / Upgrade running service`. It downloads and verifies the latest matching binary, atomically replaces only the executable, and restarts the service. The environment file, SQLite database, subscriptions, and administrator credentials are preserved.  
+要安全升级，请选择 `7) 在线升级服务 / Upgrade running service`。该功能会下载并校验最新匹配架构二进制，只原子替换可执行文件后重启服务；环境文件、SQLite 数据库、订阅和管理员凭据都会保留。
 
 ---
 
@@ -135,17 +137,10 @@ With `STALKER_PROXY_MEDIA=false`, playback uses HTTP 302 and consumes no service
 
 ---
 
-## SHA-256 / 校验值
+## Download Verification / 下载校验
 
-```text
-stalker-aggregator-aarch64  9016790cd3483f99c2726d3b0acdddfc65cfe892ebe9935e3696135fbc115b01
-stalker-aggregator-amd64    bc42662b5f5a7d67fa5531d61843f002fd78bc5b708f6fcb69605cb2d1174997
-stalker-aggregator-armv7    b6e28b1bea07b043ccc5ca514ed79a0227f44bd5153620cf076dbd8fc90a8bb5
-```
-
-```bash
-sha256sum stalker-aggregator-amd64
-```
+The installer retrieves each release asset's `sha256` digest from the GitHub Release API, downloads the corresponding binary, and verifies it before installation. There are no version-specific checksums hard-coded in the script.  
+安装器会从 GitHub Release API 读取每个发布资产的 `sha256` digest，下载对应二进制后再验证。脚本中不再固定任何版本的校验值。
 
 ---
 
