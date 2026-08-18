@@ -145,7 +145,7 @@ upgrade_running_service() {
 
 uninstall_service() {
   local env_file=/etc/stalker-aggregator.env unit_file="/etc/systemd/system/$SERVICE_NAME.service"
-  local current_dir= remove_dir=false confirm=
+  local current_dir= remove_dir=false remove_user=false confirm= marker=
   if [ "$(id -u)" -ne 0 ]; then
     printf '%b\n' "${RED}请以 root 运行 / Run as root.${RESET}"
     return
@@ -167,10 +167,14 @@ uninstall_service() {
   systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
   rm -f -- "$unit_file" "$env_file"
   if [ -n "$current_dir" ] && [ "$current_dir" != "/" ]; then
-    if [ "$current_dir" = "/opt/stalker-aggregator" ]; then
+    marker="$current_dir/.stalker-aggregator-install"
+    if [ -f "$marker" ]; then
+      grep -q '^REMOVE_INSTALL_DIR=true$' "$marker" && remove_dir=true
+      grep -q '^REMOVE_STALKER_USER=true$' "$marker" && remove_user=true
+    elif [ "$current_dir" = "/opt/stalker-aggregator" ]; then
+      # Compatibility with installations created before ownership markers existed.
       remove_dir=true
-    elif [ -f "$current_dir/.stalker-aggregator-install" ] && grep -q '^REMOVE_INSTALL_DIR=true$' "$current_dir/.stalker-aggregator-install"; then
-      remove_dir=true
+      remove_user=true
     fi
     if [ "$remove_dir" = true ]; then
       rm -rf -- "$current_dir"
@@ -181,7 +185,9 @@ uninstall_service() {
       rmdir -- "$current_dir" 2>/dev/null || true
     fi
   fi
-  id -u stalker >/dev/null 2>&1 && userdel stalker >/dev/null 2>&1 || true
+  if [ "$remove_user" = true ] && id -u stalker >/dev/null 2>&1; then
+    userdel stalker >/dev/null 2>&1 || true
+  fi
   systemctl daemon-reload
   systemctl reset-failed "$SERVICE_NAME" >/dev/null 2>&1 || true
   printf '%b\n' "${GREEN}${BOLD}卸载完成，服务及其数据已清除 / Uninstall complete; service and data removed.${RESET}"
@@ -276,12 +282,16 @@ else
   printf '%b\n' "${YELLOW}使用本地二进制 / Using local binary fallback.${RESET}"
 fi
 REMOVE_INSTALL_DIR=false
+REMOVE_STALKER_USER=false
 [ -d "$INSTALL_DIR" ] || REMOVE_INSTALL_DIR=true
-id -u stalker >/dev/null 2>&1 || useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin stalker
+if ! id -u stalker >/dev/null 2>&1; then
+  useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin stalker
+  REMOVE_STALKER_USER=true
+fi
 install -d -o stalker -g stalker -m 0750 "$INSTALL_DIR" "$INSTALL_DIR/data"
 install -o root -g root -m 0755 "$SOURCE" "$INSTALL_DIR/stalker-aggregator"
 if [ ! -f "$INSTALL_DIR/.stalker-aggregator-install" ]; then
-  printf 'REMOVE_INSTALL_DIR=%s\n' "$REMOVE_INSTALL_DIR" > "$INSTALL_DIR/.stalker-aggregator-install"
+  printf 'REMOVE_INSTALL_DIR=%s\nREMOVE_STALKER_USER=%s\n' "$REMOVE_INSTALL_DIR" "$REMOVE_STALKER_USER" > "$INSTALL_DIR/.stalker-aggregator-install"
   chown root:root "$INSTALL_DIR/.stalker-aggregator-install"
   chmod 0644 "$INSTALL_DIR/.stalker-aggregator-install"
 fi
