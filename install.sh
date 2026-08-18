@@ -67,8 +67,7 @@ set_admin_credentials() {
   read -r -p '管理账户 / Admin username [admin]: ' username
   username=${username:-admin}
   case "$username" in *[!A-Za-z0-9_.-]*|'') printf '%b\n' "${RED}账户只能使用字母、数字、点、下划线或连字符 / Invalid username.${RESET}"; sleep 1; return;; esac
-  read -r -s -p '管理密码 / Admin password (留空自动生成 / blank = auto): ' password
-  printf '\n'
+  read -r -p '管理密码（输入可见）/ Admin password (visible, blank = auto): ' password
   if [ -n "$password" ] && [ "${#password}" -lt 12 ]; then
     printf '%b\n' "${RED}密码至少 12 个字符 / Password must be at least 12 characters.${RESET}"; sleep 1; return
   fi
@@ -144,6 +143,50 @@ upgrade_running_service() {
   printf '%b\n' "${YELLOW}订阅、数据库和配置未被修改 / Subscriptions, database, and configuration were preserved.${RESET}"
 }
 
+uninstall_service() {
+  local env_file=/etc/stalker-aggregator.env unit_file="/etc/systemd/system/$SERVICE_NAME.service"
+  local current_dir= remove_dir=false confirm=
+  if [ "$(id -u)" -ne 0 ]; then
+    printf '%b\n' "${RED}请以 root 运行 / Run as root.${RESET}"
+    return
+  fi
+  current_dir=$(systemctl show --property=WorkingDirectory --value "$SERVICE_NAME" 2>/dev/null || true)
+  if [ -z "$current_dir" ] && [ -f "$unit_file" ]; then
+    current_dir=$(sed -n 's/^WorkingDirectory=//p' "$unit_file" | head -n 1)
+  fi
+  if [ -z "$current_dir" ] && [ ! -f "$env_file" ] && [ ! -f "$unit_file" ]; then
+    printf '%b\n' "${RED}未找到已安装服务 / Installed service not found.${RESET}"
+    return
+  fi
+  printf '%b\n' "${RED}${BOLD}警告：卸载会永久删除服务、配置、数据库和全部订阅数据。${RESET}"
+  printf '%b\n' "${RED}${BOLD}Warning: uninstall permanently removes the service, configuration, database, and all subscriptions.${RESET}"
+  [ -n "$current_dir" ] && printf '安装路径 / Install path: %s\n' "$current_dir"
+  read -r -p '确认完全卸载？/ Confirm complete uninstall [y/N]: ' confirm
+  case "$confirm" in y|Y|yes|YES) ;; *) printf '%b\n' "${YELLOW}已取消卸载 / Uninstall cancelled.${RESET}"; return ;; esac
+
+  systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
+  rm -f -- "$unit_file" "$env_file"
+  if [ -n "$current_dir" ] && [ "$current_dir" != "/" ]; then
+    if [ "$current_dir" = "/opt/stalker-aggregator" ]; then
+      remove_dir=true
+    elif [ -f "$current_dir/.stalker-aggregator-install" ] && grep -q '^REMOVE_INSTALL_DIR=true$' "$current_dir/.stalker-aggregator-install"; then
+      remove_dir=true
+    fi
+    if [ "$remove_dir" = true ]; then
+      rm -rf -- "$current_dir"
+    else
+      rm -f -- "$current_dir/stalker-aggregator" "$current_dir/.stalker-aggregator.new" "$current_dir/.stalker-aggregator-install"
+      rm -f -- "$current_dir/data/stalker.db" "$current_dir/data/stalker.db-shm" "$current_dir/data/stalker.db-wal"
+      rmdir -- "$current_dir/data" 2>/dev/null || true
+      rmdir -- "$current_dir" 2>/dev/null || true
+    fi
+  fi
+  id -u stalker >/dev/null 2>&1 && userdel stalker >/dev/null 2>&1 || true
+  systemctl daemon-reload
+  systemctl reset-failed "$SERVICE_NAME" >/dev/null 2>&1 || true
+  printf '%b\n' "${GREEN}${BOLD}卸载完成，服务及其数据已清除 / Uninstall complete; service and data removed.${RESET}"
+}
+
 print_summary() {
   printf '%b\n' "${CYAN}${BOLD}========================================${RESET}"
   printf '%b\n' "${GREEN}${BOLD}安装完成 / Installation complete${RESET}"
@@ -177,17 +220,19 @@ show_menu() {
   printf '%b\n' "  ${GREEN}1${RESET}) 在线安装 / Online install"
   printf '%b\n' "  ${GREEN}2${RESET}) 在线更改端口 / Update running service port"
   printf '%b\n' "  ${GREEN}3${RESET}) 在线升级服务 / Upgrade running service"
+  printf '%b\n' "  ${RED}4${RESET}) 在线卸载 / Online uninstall"
   printf '%b\n' "  ${GREEN}0${RESET}) 退出 / Exit"
 }
 
 configure_interactively() {
   while true; do
     show_menu
-    read -r -p '请选择 / Select [0-3]: ' choice
+    read -r -p '请选择 / Select [0-4]: ' choice
     case "$choice" in
       1) prompt_install_options && break; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
       2) update_running_port; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
       3) upgrade_running_service; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
+      4) uninstall_service; read -r -p '按 Enter 返回菜单 / Press Enter to return: ' _ ;;
       0) exit 0 ;;
       *) printf '%b\n' "${RED}选项无效 / Invalid selection.${RESET}"; sleep 1 ;;
     esac
@@ -230,9 +275,16 @@ else
   [ -x "$SOURCE" ] || { echo "下载失败且找不到本地二进制 / Download failed and local binary is missing: $SOURCE" >&2; exit 1; }
   printf '%b\n' "${YELLOW}使用本地二进制 / Using local binary fallback.${RESET}"
 fi
+REMOVE_INSTALL_DIR=false
+[ -d "$INSTALL_DIR" ] || REMOVE_INSTALL_DIR=true
 id -u stalker >/dev/null 2>&1 || useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin stalker
 install -d -o stalker -g stalker -m 0750 "$INSTALL_DIR" "$INSTALL_DIR/data"
 install -o root -g root -m 0755 "$SOURCE" "$INSTALL_DIR/stalker-aggregator"
+if [ ! -f "$INSTALL_DIR/.stalker-aggregator-install" ]; then
+  printf 'REMOVE_INSTALL_DIR=%s\n' "$REMOVE_INSTALL_DIR" > "$INSTALL_DIR/.stalker-aggregator-install"
+  chown root:root "$INSTALL_DIR/.stalker-aggregator-install"
+  chmod 0644 "$INSTALL_DIR/.stalker-aggregator-install"
+fi
 
 ENV_FILE=/etc/stalker-aggregator.env
 if [ ! -f "$ENV_FILE" ]; then
